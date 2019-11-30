@@ -8,6 +8,7 @@ use std::fmt;
 use std::io;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::task::{Context, Poll};
+use std::pin::Pin;
 
 cfg_udp! {
     /// A UDP socket
@@ -108,7 +109,7 @@ impl UdpSocket {
     ///
     /// [`connect`]: #method.connect
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        poll_fn(|cx| self.poll_send(cx, buf)).await
+        poll_fn(|cx| self.poll_send_priv(cx, buf)).await
     }
 
     // Poll IO functions that takes `&self` are provided for the split API.
@@ -122,7 +123,7 @@ impl UdpSocket {
     // of view, it will result in unexpected behavior in the form of lost
     // notifications and tasks hanging.
     #[doc(hidden)]
-    pub fn poll_send(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+    pub fn poll_send_priv(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         ready!(self.io.poll_write_ready(cx))?;
 
         match self.io.get_ref().send(buf) {
@@ -132,6 +133,10 @@ impl UdpSocket {
             }
             x => Poll::Ready(x),
         }
+    }
+
+    pub fn poll_send(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        self.poll_send_priv(cx, buf)
     }
 
     /// Returns a future that receives a single datagram message on the socket from
@@ -147,11 +152,11 @@ impl UdpSocket {
     ///
     /// [`connect`]: #method.connect
     pub async fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        poll_fn(|cx| self.poll_recv(cx, buf)).await
+        poll_fn(|cx| self.poll_recv_priv(cx, buf)).await
     }
 
     #[doc(hidden)]
-    pub fn poll_recv(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    pub fn poll_recv_priv(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         ready!(self.io.poll_read_ready(cx, mio::Ready::readable()))?;
 
         match self.io.get_ref().recv(buf) {
@@ -163,6 +168,10 @@ impl UdpSocket {
         }
     }
 
+    pub fn poll_recv(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.poll_recv_priv(cx, buf)
+    }
+
     /// Returns a future that sends data on the socket to the given address.
     /// On success, the future will resolve to the number of bytes written.
     ///
@@ -172,7 +181,7 @@ impl UdpSocket {
         let mut addrs = target.to_socket_addrs().await?;
 
         match addrs.next() {
-            Some(target) => poll_fn(|cx| self.poll_send_to(cx, buf, &target)).await,
+            Some(target) => poll_fn(|cx| self.poll_send_to_priv(cx, buf, &target)).await,
             None => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "no addresses to send data to",
@@ -180,9 +189,8 @@ impl UdpSocket {
         }
     }
 
-    // TODO: Public or not?
     #[doc(hidden)]
-    pub fn poll_send_to(
+    pub fn poll_send_to_priv(
         &self,
         cx: &mut Context<'_>,
         buf: &[u8],
@@ -199,6 +207,13 @@ impl UdpSocket {
         }
     }
 
+    pub fn poll_send_to(self: Pin<&mut Self>, cx: &mut Context<'_>,
+        buf: &[u8],
+        target: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
+        self.poll_send_to_priv(cx, buf, target)
+    }
+
     /// Returns a future that receives a single datagram on the socket. On success,
     /// the future resolves to the number of bytes read and the origin.
     ///
@@ -206,11 +221,11 @@ impl UdpSocket {
     /// to hold the message bytes. If a message is too long to fit in the supplied
     /// buffer, excess bytes may be discarded.
     pub async fn recv_from(&mut self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        poll_fn(|cx| self.poll_recv_from(cx, buf)).await
+        poll_fn(|cx| self.poll_recv_from_priv(cx, buf)).await
     }
 
     #[doc(hidden)]
-    pub fn poll_recv_from(
+    pub fn poll_recv_from_priv(
         &self,
         cx: &mut Context<'_>,
         buf: &mut [u8],
@@ -224,6 +239,12 @@ impl UdpSocket {
             }
             x => Poll::Ready(x),
         }
+    }
+
+    pub fn poll_recv_from(self: Pin<&mut Self>, cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<(usize, SocketAddr), io::Error>> {
+        self.poll_recv_from_priv(cx, buf)
     }
 
     /// Gets the value of the `SO_BROADCAST` option for this socket.
