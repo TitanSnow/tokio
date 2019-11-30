@@ -1,6 +1,6 @@
 use crate::future::poll_fn;
 use crate::io::PollEvented;
-use crate::net::udp::split::{split, RecvHalf, SendHalf};
+use crate::net::udp::split::{split, split_owned, RecvHalf, RecvHalfOwned, SendHalf, SendHalfOwned};
 use crate::net::ToSocketAddrs;
 
 use std::convert::TryFrom;
@@ -65,13 +65,22 @@ impl UdpSocket {
     }
 
     /// Split the `UdpSocket` into a receive half and a send half. The two parts
+    /// can be used to receive and send datagrams concurrently.
+    ///
+    /// See the module level documenation of [`split`](super::split) for more
+    /// details.
+    pub fn split(&mut self) -> (RecvHalf<'_>, SendHalf<'_>) {
+        split(self)
+    }
+
+    /// Split the `UdpSocket` into a receive half and a send half. The two parts
     /// can be used to receive and send datagrams concurrently, even from two
     /// different tasks.
     ///
     /// See the module level documenation of [`split`](super::split) for more
     /// details.
-    pub fn split(self) -> (RecvHalf, SendHalf) {
-        split(self)
+    pub fn split_owned(self) -> (RecvHalfOwned, SendHalfOwned) {
+        split_owned(self)
     }
 
     /// Returns the local address that this socket is bound to.

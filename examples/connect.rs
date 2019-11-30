@@ -115,13 +115,12 @@ mod tcp {
 }
 
 mod udp {
-    use tokio::net::udp::{RecvHalf, SendHalf};
-    use tokio::net::UdpSocket;
-
     use futures::{future, Sink, SinkExt, Stream, StreamExt};
-    use std::error::Error;
-    use std::io;
-    use std::net::SocketAddr;
+    use std::{error::Error, io, net::SocketAddr};
+    use tokio::net::udp::{
+        split::{RecvHalf, SendHalf},
+        UdpSocket,
+    };
 
     pub async fn connect(
         addr: &SocketAddr,
@@ -136,18 +135,18 @@ mod udp {
             "[::]:0"
         };
 
-        let socket = UdpSocket::bind(&bind_addr).await?;
+        let mut socket = UdpSocket::bind(&bind_addr).await?;
         socket.connect(addr).await?;
-        let (mut r, mut w) = socket.split();
+        let (r, w) = socket.split();
 
-        future::try_join(send(stdin, &mut w), recv(stdout, &mut r)).await?;
+        future::try_join(send(stdin, w), recv(stdout, r)).await?;
 
         Ok(())
     }
 
     async fn send(
         mut stdin: impl Stream<Item = Result<Vec<u8>, io::Error>> + Unpin,
-        writer: &mut SendHalf,
+        mut writer: SendHalf<'_>,
     ) -> Result<(), io::Error> {
         while let Some(item) = stdin.next().await {
             let buf = item?;
@@ -159,7 +158,7 @@ mod udp {
 
     async fn recv(
         mut stdout: impl Sink<Vec<u8>, Error = io::Error> + Unpin,
-        reader: &mut RecvHalf,
+        mut reader: RecvHalf<'_>,
     ) -> Result<(), io::Error> {
         loop {
             let mut buf = vec![0; 1024];
