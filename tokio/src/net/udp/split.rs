@@ -21,6 +21,8 @@ use std::fmt;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 /// The send half after [`split`](super::UdpSocket::split).
 ///
@@ -66,6 +68,16 @@ impl<'a> RecvHalf<'a> {
     pub async fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         poll_fn(|cx| self.0.poll_recv_priv(cx, buf)).await
     }
+
+    pub fn poll_recv(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.0.poll_recv_priv(cx, buf)
+    }
+
+    pub fn poll_recv_from(self: Pin<&mut Self>, cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<(usize, SocketAddr), io::Error>> {
+        self.0.poll_recv_from_priv(cx, buf)
+    }
 }
 
 impl<'a> SendHalf<'a> {
@@ -95,6 +107,17 @@ impl<'a> SendHalf<'a> {
     /// [`connect`]: super::UdpSocket::connect
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         poll_fn(|cx| self.0.poll_send_priv(cx, buf)).await
+    }
+
+    pub fn poll_send(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        self.0.poll_send_priv(cx, buf)
+    }
+
+    pub fn poll_send_to(self: Pin<&mut Self>, cx: &mut Context<'_>,
+        buf: &[u8],
+        target: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
+        self.0.poll_send_to_priv(cx, buf, target)
     }
 }
 
@@ -193,6 +216,16 @@ impl RecvHalfOwned {
     pub async fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         poll_fn(|cx| self.0.poll_recv_priv(cx, buf)).await
     }
+
+    pub fn poll_recv(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.0.poll_recv_priv(cx, buf)
+    }
+
+    pub fn poll_recv_from(self: Pin<&mut Self>, cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<(usize, SocketAddr), io::Error>> {
+        self.0.poll_recv_from_priv(cx, buf)
+    }
 }
 
 impl SendHalfOwned {
@@ -229,6 +262,17 @@ impl SendHalfOwned {
     /// [`connect`]: super::UdpSocket::connect
     pub async fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
         poll_fn(|cx| self.0.poll_send_priv(cx, buf)).await
+    }
+
+    pub fn poll_send(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        self.0.poll_send_priv(cx, buf)
+    }
+
+    pub fn poll_send_to(self: Pin<&mut Self>, cx: &mut Context<'_>,
+        buf: &[u8],
+        target: &SocketAddr,
+    ) -> Poll<io::Result<usize>> {
+        self.0.poll_send_to_priv(cx, buf, target)
     }
 }
 
